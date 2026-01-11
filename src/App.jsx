@@ -32,6 +32,13 @@ function App() {
     const [isRoleLocked, setIsRoleLocked] = useState(false);
     const [isAnswerLocked, setIsAnswerLocked] = useState(false);
 
+    // Add this state near the top of App component (around line 30)
+    const [settings, setSettings] = useState({
+        totalRounds: 10,
+        blindBetDuration: 20,
+        marketChatDuration: 45
+    });
+
     // 🔧 NEW: Round Tracking for Persistent State
     const lastPhaseRef = useRef(null);
     const lastRoundRef = useRef(0);
@@ -126,6 +133,26 @@ function App() {
         }
     }
 
+    // Add this function with other handlers (around line 150)
+    const handleUpdateSettings = async () => {
+        try {
+            await axios.post(
+                `${API_URL}/${roomId}/settings?playerId=${username}`,
+                {
+                    // 👇 ÉP KIỂU SỐ Ở ĐÂY (Quan trọng)
+                    // Nếu người dùng nhập linh tinh hoặc để trống, nó sẽ lấy giá trị mặc định (10, 20, 45)
+                    totalRounds: Number(settings.totalRounds) || 10,
+                    blindBetDuration: Number(settings.blindBetDuration) || 20,
+                    marketChatDuration: Number(settings.marketChatDuration) || 45
+                }
+            );
+            alert("✅ Cài đặt đã được cập nhật!");
+        } catch (err) {
+            console.error(err);
+            alert("❌ Lỗi: " + (err.response?.data?.error || err.message));
+        }
+    }
+
     const handleSelectAnswer = async (answer) => {
         if (isAnswerLocked || selectedAnswer) {
             console.log("🔒 Answer already locked, ignoring click");
@@ -169,6 +196,14 @@ function App() {
             stompClient.subscribe(`/topic/game/${roomId}`, (message) => {
                 const data = JSON.parse(message.body);
                 const incomingRound = data.currentRound || 1;
+
+                if (data.settings) {
+                    setSettings({
+                        totalRounds: data.settings.totalRounds,
+                        blindBetDuration: data.settings.blindBetDuration,
+                        marketChatDuration: data.settings.marketChatDuration
+                    });
+                }
 
                 // 🔧 CRITICAL: Only reset when round CHANGES
                 if (data.currentRound > lastRoundRef.current) {
@@ -328,7 +363,7 @@ function App() {
                 <div>
                     <h2 className="text-2xl font-bold text-yellow-400">{username}</h2>
                     <p className="text-sm text-gray-400">
-                        Room: {roomId} | Round: {gameData?.currentRound}/{gameData?.totalRounds}
+                        Room: {roomId} | Round: {gameData?.currentRound}/{settings.totalRounds}
                     </p>
                 </div>
                 <div className="text-right">
@@ -366,12 +401,84 @@ function App() {
                 {/* ─────────────────────────────────────────────────────── */}
                 {/* 1️⃣ LOBBY / WAITING */}
                 {/* ─────────────────────────────────────────────────────── */}
+
                 {(!gameData || gameData.currentState === 'WAITING') && (
-                    <div className="text-center mt-20">
+                    <div className="text-center mt-10 w-full">
                         <div className="text-6xl mb-4">⏳</div>
                         <h3 className="text-xl font-bold mb-6">
                             Đang chờ người chơi... ({gameData ? Object.keys(gameData.players).length : 1})
                         </h3>
+
+                        {/* 🔧 NEW: Settings Panel */}
+                        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 mb-6 max-w-md mx-auto">
+                            <h4 className="text-lg font-bold text-yellow-400 mb-4">⚙️ CÀI ĐẶT PHÒNG</h4>
+
+                            {gameData?.hostId === username ? (
+                                // HOST VIEW: Editable Settings
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-sm text-gray-400 block mb-1">Tổng số vòng</label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="20"
+                                            value={settings.totalRounds}
+                                            onChange={(e) => setSettings({...settings, totalRounds: Number(e.target.value)})}
+                                            className="w-full bg-gray-900 p-2 rounded text-white border border-gray-600 text-center font-bold"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm text-gray-400 block mb-1">Thời gian đặt cược (giây)</label>
+                                        <input
+                                            type="number"
+                                            min="10"
+                                            max="60"
+                                            value={settings.blindBetDuration}
+                                            onChange={(e) => setSettings({...settings, blindBetDuration: Number(e.target.value)})}
+                                            className="w-full bg-gray-900 p-2 rounded text-white border border-gray-600 text-center font-bold"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm text-gray-400 block mb-1">Thời gian trả lời (giây)</label>
+                                        <input
+                                            type="number"
+                                            min="20"
+                                            max="120"
+                                            value={settings.marketChatDuration}
+                                            onChange={(e) => setSettings({...settings, marketChatDuration: Number(e.target.value)})}
+                                            className="w-full bg-gray-900 p-2 rounded text-white border border-gray-600 text-center font-bold"
+                                        />
+                                    </div>
+
+                                    <button
+                                        onClick={handleUpdateSettings}
+                                        className="w-full bg-blue-600 py-2 rounded font-bold hover:bg-blue-500 transition"
+                                    >
+                                        💾 LƯU CÀI ĐẶT
+                                    </button>
+                                </div>
+                            ) : (
+                                // PLAYER VIEW: Read-Only Display
+                                <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between p-2 bg-gray-900 rounded">
+                                        <span className="text-gray-400">Tổng số vòng:</span>
+                                        <span className="font-bold text-white">{settings.totalRounds}</span>
+                                    </div>
+                                    <div className="flex justify-between p-2 bg-gray-900 rounded">
+                                        <span className="text-gray-400">Thời gian đặt cược:</span>
+                                        <span className="font-bold text-white">{settings.blindBetDuration}s</span>
+                                    </div>
+                                    <div className="flex justify-between p-2 bg-gray-900 rounded">
+                                        <span className="text-gray-400">Thời gian trả lời:</span>
+                                        <span className="font-bold text-white">{settings.marketChatDuration}s</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Start Game Button */}
                         {gameData?.hostId === username && (
                             <button
                                 onClick={handleStartGame}
